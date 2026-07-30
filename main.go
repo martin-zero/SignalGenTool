@@ -10,14 +10,17 @@ import (
 	"strings"
 )
 
+// Event 表示一个待生成的 C# 表项。
 type Event interface {
 	isEvent()
 }
 
+// GroupEvent 表示头文件中的注释分组。
 type GroupEvent struct {
 	text string
 }
 
+// SignalEvent 表示头文件中的信号定义。
 type SignalEvent struct {
 	signal Signal
 }
@@ -26,6 +29,7 @@ func (GroupEvent) isEvent() {}
 
 func (SignalEvent) isEvent() {}
 
+// Signal 保存解析后的宏名称、宏值、注释和 C# 类型。
 type Signal struct {
 	name       string
 	value      any
@@ -33,31 +37,30 @@ type Signal struct {
 	signalType string
 }
 
+// ParserState 保存头文件元信息，以及按源码顺序解析出的事件。
 type ParserState struct {
 	version string
 	date    string
 	events  []Event
 }
 
+// scanHeader 解析输入头文件，并返回解析出的元信息和信号。
 func scanHeader(path string) (ParserState, int, error) {
 	log.Println("正在解析头文件..")
 
 	state := ParserState{}
 	parseCount := 0
 
-	// 打开文件
 	file, err := os.Open(path)
 	if err != nil {
 		return ParserState{}, 0, fmt.Errorf("打开头文件失败: %w", err)
 	}
 	defer file.Close()
 
-	// 扫描文件
 	scanner := bufio.NewScanner(file)
 
 	isBody := false
 
-	// 扫描.h文件，提取出信息
 	lineNo := 0
 	for scanner.Scan() {
 		lineNo++
@@ -138,9 +141,10 @@ func scanHeader(path string) (ParserState, int, error) {
 	return state, parseCount, nil
 }
 
+// writeCSharpFile 将生成的 C# 信号表写入 outputPath。
 func writeCSharpFile(outputPath string, state ParserState) (err error) {
 	log.Println("正在生成目标文件..")
-	// 创建成果物
+
 	file, err := os.Create(filepath.Join(outputPath, "VehicleSignalTable.cs"))
 	if err != nil {
 		return fmt.Errorf("创建文件失败: %w", err)
@@ -221,7 +225,7 @@ func writeCSharpFile(outputPath string, state ParserState) (err error) {
 	return nil
 }
 
-// 版本解析器，提取版本号
+// parseVersion 从头文件元信息行中提取版本号。
 func (p *ParserState) parseVersion(line string) error {
 	if p.version != "" {
 		return fmt.Errorf("解析到重复文本")
@@ -242,7 +246,7 @@ func (p *ParserState) parseVersion(line string) error {
 	return nil
 }
 
-// 修改时间解析器
+// parseDate 从头文件元信息行中提取更新时间。
 func (p *ParserState) parseDate(line string) error {
 	if p.date != "" {
 		return fmt.Errorf("解析到重复文本")
@@ -263,7 +267,7 @@ func (p *ParserState) parseDate(line string) error {
 	return nil
 }
 
-// 分组解析器
+// parseGroup 解析注释分组，并追加为分组事件。
 func (p *ParserState) parseGroup(line string) error {
 	group := strings.TrimSpace(strings.TrimPrefix(line, "//"))
 	if group == "" {
@@ -275,13 +279,11 @@ func (p *ParserState) parseGroup(line string) error {
 	return nil
 }
 
-// 信号解析器
+// parseSignal 从 #define 行解析信号，并追加为信号事件。
 func (p *ParserState) parseSignal(line string) error {
 
-	// 去掉宏定义字段
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "#define"))
 
-	// 找到 "//" 之后的字段（信号说明）
 	defineText, after, ok := strings.Cut(rest, "//")
 	if !ok {
 		defineText = rest
@@ -289,7 +291,6 @@ func (p *ParserState) parseSignal(line string) error {
 		after = strings.TrimSpace(after)
 	}
 
-	// 分割字符串
 	fields := strings.Fields(defineText)
 
 	signalType := "uint"
@@ -317,7 +318,6 @@ func (p *ParserState) parseSignal(line string) error {
 func main() {
 	log.SetFlags(0)
 
-	// 解析参数
 	inputPath := flag.String("i", "", "输入要解析的头文件的文件路径`路径`")
 	outputPath := flag.String("o", "./", "目标文件的生成路径`路径`")
 
@@ -328,13 +328,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 解析头文件
 	state, parseCount, err := scanHeader(*inputPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 生成目标文件
 	if err := writeCSharpFile(*outputPath, state); err != nil {
 		log.Fatal(err)
 	}
